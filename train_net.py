@@ -372,9 +372,14 @@ if __name__ == "__main__":
         num_gpus_per_node = torch.cuda.device_count()
         args.num_machines = world_size // num_gpus_per_node
         args.machine_rank = int(os.environ['SLURM_PROCID']) // num_gpus_per_node
-
-        from detectron2.utils.comm import get_world_size, get_rank, create_local_process_group
-        from detectron2.utils.comm import _LOCAL_PROCESS_GROUP
-        create_local_process_group(num_workers_per_machine=num_gpus_per_node)
+        args.distributed = True
+        # from detectron2.utils.comm import get_world_size, get_rank, create_local_process_group
+        # from detectron2.utils.comm import _LOCAL_PROCESS_GROUP
+        # create_local_process_group(num_workers_per_machine=num_gpus_per_node)
+        for i in range(args.num_machines):
+            ranks_on_i = list(range(i * num_gpus_per_node, (i + 1) * num_gpus_per_node))
+            pg = dist.new_group(ranks_on_i)
+            if i == args.machine_rank:
+                comm._LOCAL_PROCESS_GROUP = pg
 
         main(args)
