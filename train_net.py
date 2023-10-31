@@ -298,15 +298,83 @@ def main(args):
     trainer.resume_or_load(resume=args.resume)
     return trainer.train()
 
+import torch.distributed as dist
+import cv2
+import os
+import torch
+import subprocess
+import torch.multiprocessing as mp
+
+
+def _init_dist_slurm():
+    if mp.get_start_method(allow_none=True) is None:
+        mp.set_start_method('spawn')
+    proc_id = int(os.environ['SLURM_PROCID'])
+    ntasks = int(os.environ['SLURM_NTASKS'])
+    node_list = os.environ['SLURM_NODELIST']
+    num_gpus_per_node = torch.cuda.device_count()
+    torch.cuda.set_device(proc_id % num_gpus_per_node)
+    addr = subprocess.getoutput(
+        f'scontrol show hostname {node_list} | head -n1')
+    # specify master port
+    if 'MASTER_PORT' in os.environ:
+        pass  # use MASTER_PORT in the environment variable
+    else:
+        # 29500 is torch.distributed default port
+        os.environ['MASTER_PORT'] = '29500'
+    # use MASTER_ADDR in the environment variable if it already exists
+    if 'MASTER_ADDR' not in os.environ:
+        os.environ['MASTER_ADDR'] = addr
+    os.environ['WORLD_SIZE'] = str(ntasks)
+    os.environ['LOCAL_RANK'] = str(proc_id % num_gpus_per_node)
+    os.environ['RANK'] = str(proc_id)
+    dist.init_process_group(backend='nccl')
+
+def _setup_multi_processes():
+    current_method = mp.get_start_method(allow_none=True)
+    mp.set_start_method('fork', force=True)
+    cv2.setNumThreads(0)
+    omp_num_threads = 1
+    os.environ['OMP_NUM_THREADS'] = str(omp_num_threads)
+    mkl_num_threads = 1
+    os.environ['MKL_NUM_THREADS'] = str(mkl_num_threads)
+
 
 if __name__ == "__main__":
-    args = default_argument_parser().parse_args()
+    parser = default_argument_parser()
+    parser.add_argument(
+        '--launcher',
+        choices=['none', 'slurm'],
+        default='none',
+        help='job launcher')
+
+    args = parser.parse_args()
+
+
     print("Command Line Args:", args)
-    launch(
-        main,
-        args.num_gpus,
-        num_machines=args.num_machines,
-        machine_rank=args.machine_rank,
-        dist_url=args.dist_url,
-        args=(args,),
-    )
+
+    if args.launcher == 'none':
+        launch(
+            main,
+            args.num_gpus,
+            num_machines=args.num_machines,
+            machine_rank=args.machine_rank,
+            dist_url=args.dist_url,
+            args=(args,),
+        )
+    else:
+        _setup_multi_processes()
+        _init_dist_slurm()
+
+        rank = dist.get_rank()
+        world_size = dist.get_world_size()
+        args.num_gpus = world_size
+        num_gpus_per_node = torch.cuda.device_count()
+        args.num_machines = world_size // num_gpus_per_node
+        args.machine_rank = int(os.environ['SLURM_PROCID']) // num_gpus_per_node
+
+        from detectron2.utils.comm import get_world_size, get_rank, create_local_process_group
+        from detectron2.utils.comm import _LOCAL_PROCESS_GROUP
+        create_local_process_group(num_workers_per_machine=num_gpus_per_node)
+
+        main(args)

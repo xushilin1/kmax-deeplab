@@ -93,7 +93,7 @@ class kMaXPredictor(nn.Module):
         trunc_normal_(self._transformer_class_head.conv.weight, std=0.01)
 
         self._pixel_space_mask_batch_norm = get_norm('syncbn', channels=1)
-        nn.init.constant_(self._pixel_space_mask_batch_norm.weight, 0.1)
+        # nn.init.constant_(self._pixel_space_mask_batch_norm.weight, 0.1)
 
 
     def forward(self, mask_embeddings, class_embeddings, pixel_feature):
