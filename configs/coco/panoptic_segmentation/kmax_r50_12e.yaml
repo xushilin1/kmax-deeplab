@@ -3,6 +3,7 @@ MODEL:
   BACKBONE:
     FREEZE_AT: 0
     NAME: "custom_bn_build_resnet_backbone" # we customize the momentum and eps in syncbn, to align with tf implementation.
+  WEIGHTS: "R-50.pkl"
   PIXEL_MEAN: [127.5, 127.5, 127.5]
   PIXEL_STD: [127.5, 127.5, 127.5]
   RESNETS:
@@ -65,7 +66,8 @@ SOLVER:
   IMS_PER_BATCH: 64
   BASE_LR: 0.0005
   LR_SCHEDULER_NAME: "TF2WarmupPolyLR"
-  MAX_ITER: 18750
+  STEPS: (18806, 21018)
+  MAX_ITER: 22125
   WARMUP_ITERS: 1000
   WEIGHT_DECAY: 0.05
   OPTIMIZER: "ADAMW"
@@ -88,3 +90,4 @@ DATALOADER:
   FILTER_EMPTY_ANNOTATIONS: True
   NUM_WORKERS: 4
 VERSION: 2
+OUTPUT_DIR: 'output/kmax_r50_12e'
